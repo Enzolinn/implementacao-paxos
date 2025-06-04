@@ -1,0 +1,10 @@
+https://docs.rs/paxakos/latest/paxakos/
+https://docs.rs/paxos/latest/paxos/
+https://github.com/zowens/paxos-rs
+https://github.com/benschulz/paxakos
+
+*bom trabalho para entender paxos*
+https://understandingpaxos.wordpress.com/
+
+*bom tutorial*
+https://noghartt.dev/blog/paxos-made-simple-with-rust/
