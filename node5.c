@@ -1,4 +1,4 @@
-// node.c
+// node1.c
 // Paxos node with simple highest-random-number leader election
 // Now receives proposal value from client and informs client of elected leader via TCP
 
@@ -191,7 +191,7 @@ void timestamp(char *buf, size_t sz) {
 }
 
 void *listener(void *arg) {
-    int node_id = (int)(intptr_t)arg; // Corrija aqui
+    int node_id = (int)(intptr_t)arg;
     int server = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in sin = { .sin_family = AF_INET,
         .sin_addr.s_addr = INADDR_ANY,
@@ -371,10 +371,9 @@ void *paxos(void *arg) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 2) { fprintf(stderr,"Uso: %s <NODE_ID> [FAIL_CASE]\n",argv[0]); return 1; }
-    int node_id = atoi(argv[1]);
+    int node_id = 5; // ID fixo para node1
     // Permite ativar falha por argumento ou variável de ambiente
-    if (argc >= 3) fail_case = atoi(argv[2]);
+    if (argc >= 2) fail_case = atoi(argv[1]);
     char *env = getenv("PAXOS_FAIL_CASE");
     if (env) fail_case = atoi(env);
 

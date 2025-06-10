@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #define MONITOR_PORT 6000
-#define BUF_SIZE 256
+#define BUF_SIZE 512
 
 int main() {
     FILE *csv = fopen("events.csv","w");
@@ -28,7 +28,7 @@ int main() {
             FILE *f = fopen("events.csv","a");
             fprintf(f,"%s", buf);
             fclose(f);
-            printf("%s", buf);  // opcional no console
+            // printf("%s", buf);  // opcional no console
         }
     }
     return 0;
