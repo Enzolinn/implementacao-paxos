@@ -1,4 +1,0 @@
-
-
-*bom tutorial (mas em rust)*
-https://noghartt.dev/blog/paxos-made-simple-with-rust/
