@@ -9,7 +9,7 @@
 #include <time.h>
 
 #define BASE_PORT    5000    // base para nodos
-#define CLIENT_PORT  7000    // porta para receber ID do líder
+#define CLIENT_PORT  7000    // porta para receber ID do lider
 #define INTERVAL     6      // segundos entre envios
 #define MONITOR_PORT 6000
 
@@ -55,7 +55,7 @@ int receive_new_leader() {
         perror("bind"); exit(1);
     }
     listen(srv, 1);
-    printf("[Client] Aguardando novo líder na porta %d...\n", CLIENT_PORT);
+    printf("[Client] Aguardando novo lider na porta %d...\n", CLIENT_PORT);
     int c = accept(srv, NULL, NULL);
     if (c < 0) { perror("accept"); exit(1); }
     int leader_id;
@@ -64,7 +64,7 @@ int receive_new_leader() {
     }
     close(c);
     close(srv);
-    printf("[Client] Novo líder eleito: %d\n", leader_id);
+    printf("[Client] Novo lider eleito: %d\n", leader_id);
     return leader_id;
 }
 

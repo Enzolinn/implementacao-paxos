@@ -38,7 +38,7 @@ int main() {
     // da um tempo para o monitor subir
     sleep(1);
 
-    int fail_case = 4;
+    int fail_case = 0;
     char *env = getenv("PAXOS_FAIL_CASE");
     if (env) fail_case = atoi(env);
 

@@ -1,4 +1,3 @@
-// (igual ao anterior, mas grava CSV header antes)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

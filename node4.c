@@ -328,6 +328,12 @@ void *paxos(void *arg) {
             if (r.type == COORDINATOR) {
                 leader_id = r.proposal_val;
             } else if (r.type == PREPARE) {
+                
+                char ts[32], buf[128];
+                timestamp(ts, sizeof(ts));
+                snprintf(buf, sizeof(buf), "%s,%d,%d,RECV_PREPARE,%d,\n", ts, node_id, r.from_id, r.proposal_num);
+                send_monitor(buf);
+
                 msg prom = { PROMISE, node_id, r.proposal_num, accepted_value };
                 send_msg(r.from_id, &prom);
             } else if (r.type == ACCEPT) {

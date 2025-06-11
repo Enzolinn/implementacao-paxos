@@ -1,6 +1,5 @@
 # implementacao-paxos
-trabalho final da materia de Ubiquous computing 2025-1
-em C
+trabalho final da materia de Ubiquous computing 2025-1. O projeto implementa o algoritmo de consenso Paxos distribuído em C, simulando 5 nós, um cliente e um monitor de eventos. Cada nó executa threads para comunicação, eleição de líder, consenso e monitoramento de falhas.
 
 # para rodar
 gcc -o main main.c
@@ -13,24 +12,9 @@ gcc -o main main.c
 
     depois apenas ./limpar.sh
 
-# Explicação das Funções, Threads e Lógica dos Arquivos do Projeto Paxos
-
-## Visão Geral
-
-O projeto implementa o algoritmo de consenso Paxos distribuído em C, simulando 5 nós, um cliente e um monitor de eventos. Cada nó executa threads para comunicação, eleição de líder, consenso e monitoramento de falhas.
-
 ---
 
-## Principais Arquivos
-
-- **node1.c ... node5.c**: Implementação dos nós Paxos. Cada arquivo representa um nó com ID fixo.
-- **client.c**: Simula um cliente que envia propostas ao líder e aguarda respostas.
-- **monitor.c**: Recebe e grava eventos do sistema em um arquivo CSV.
-- **main.c**: Orquestra a execução dos processos (nós, cliente, monitor).
-
----
-
-## Estruturas e Funções Comuns
+## Estruturas e Funções
 
 ### Estruturas
 
@@ -83,16 +67,6 @@ Cada nó executa múltiplas threads para paralelizar as tarefas:
 
 ---
 
-## Funções de C e Bibliotecas Utilizadas
-
-- **Threads**: `pthread_create`, `pthread_mutex_lock`, `pthread_cond_wait`, etc.
-- **Sockets**: `socket`, `bind`, `listen`, `accept`, `connect`, `write`, `read`, `sendto`, `recvfrom`.
-- **Tempo**: `sleep`, `usleep`, `gettimeofday`, `time`, `strftime`.
-- **Processos**: `fork`, `execl`, `waitpid`, `kill` (em `main.c`).
-- **Outros**: `snprintf`, `perror`, `exit`, `close`, `memset`, `strncpy`.
-
----
-
 ## Fluxo Resumido
 
 1. **Monitor** inicia e escuta eventos.
@@ -103,15 +77,6 @@ Cada nó executa múltiplas threads para paralelizar as tarefas:
 6. **Se o líder falhar**, nova eleição é disparada automaticamente.
 
 ---
-
-## Observações
-
-- O uso de mutexes e condições garante que a fila de mensagens seja segura para múltiplas threads.
-- O heartbeat permite detecção automática de falhas do líder.
-- O cliente é resiliente a falhas de líder, aguardando novo líder se necessário.
-
----
-
 
 No projeto, cada **nó** (node1.c ... node5.c), o **cliente** (client.c) e o **monitor** (monitor.c) são executados como **processos separados** pelo sistema operacional, criados via `fork` em `main.c`. Ou seja, cada um roda de forma independente.
 
