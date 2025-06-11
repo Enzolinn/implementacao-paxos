@@ -1,7 +1,3 @@
-// node1.c
-// Paxos node with simple highest-random-number leader election
-// Now receives proposal value from client and informs client of elected leader via TCP
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,7 +8,7 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <time.h>
-#include <stdint.h> // Adicione para intptr_t
+#include <stdint.h> 
 
 #define BASE_PORT       5000
 #define MONITOR_PORT    6000
@@ -24,17 +20,15 @@
 #define TIMEOUT_SEC     5       // intervalo Paxos
 #define KNOWN_STATES    5
 
-// Mensagens internas Paxos
-enum msg_type { ELECTION, COORDINATOR, PREPARE, PROMISE, ACCEPT, ACCEPTED };
+enum msg_type { ELECTION, COORDINATOR, PREPARE, PROMISE, ACCEPT, ACCEPTED, HEARTBEAT };
 
 typedef struct msg {
     enum msg_type type;
     int from_id;
     int proposal_num;
-    int proposal_val;   // em ELECTION: número candidato; em ACCEPT: valor proposto
+    int proposal_val;   
 } msg;
 
-// Fila simples
 
 typedef struct msg_queue {
     msg data[QUEUE_CAPACITY];
@@ -50,14 +44,16 @@ static int highest_proposal = 0;
 static int promise_count = 0;
 static int accepted_count = 0;
 static int accepted_value = -1;
-static int proposal_value = -1; // valor dinâmico recebido do cliente
+static int proposal_value = -1; 
 
-static int known_states[KNOWN_STATES] = {42, 99, 7, 1234, 56}; // cada nodo conhece esses estados
+static int known_states[KNOWN_STATES] = {42, 99, 7, 1234, 56}; 
 
 static pthread_mutex_t proposal_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t proposal_cond = PTHREAD_COND_INITIALIZER;
 static int new_proposal = 0; // flag para nova proposta
-static int fail_case = 0; // 0 = normal, 1 = lider cai após eleição, 2 = lider cai após 1a proposta, 3 = nó não-lider cai
+static int fail_case = 0; // 0 = normal, 2 = lider cai após 1a proposta, 3 = nó cai
+static int leader_alive = 1;
+static time_t last_heartbeat = 0;
 
 void queue_init(msg_queue *q) {
     q->head = q->tail = q->size = 0;
@@ -111,7 +107,6 @@ void inform_client(int elected_id) {
     struct sockaddr_in addr = { .sin_family = AF_INET,
         .sin_port = htons(CLIENT_PORT),
         .sin_addr.s_addr = inet_addr("127.0.0.1") };
-    // Aguarda o client estar ouvindo
     int tentativas = 0;
     while (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) != 0 && tentativas < 10) {
         usleep(200000); // espera 200ms
@@ -141,7 +136,6 @@ void send_client_ok(int value) {
     close(sock);
 }
 
-// Thread para escutar propostas do client (apenas no líder)
 void *client_listener(void *arg) {
     int node_id = (int)(intptr_t)arg;
     int port = BASE_PORT + 100 + node_id;
@@ -162,18 +156,21 @@ void *client_listener(void *arg) {
     while (1) {
         int c = accept(server, NULL, NULL);
         struct { int type; int value; } m;
-        if (read(c, &m, sizeof(m)) == sizeof(m) && m.type == 1000) { // CLIENT_PROPOSE
+        if (read(c, &m, sizeof(m)) == sizeof(m) && m.type == 1000) { 
             pthread_mutex_lock(&proposal_mtx);
-            proposal_value = m.value; // agora value é o valor do estado
+            proposal_value = m.value; 
             new_proposal = 1;
             pthread_cond_signal(&proposal_cond);
             pthread_mutex_unlock(&proposal_mtx);
-            printf("[Node %d] Received value %d from client\n", node_id, m.value);
+            printf("[Node %d] recebido valor %d do cliente\n", node_id, m.value);
             propostas_recebidas++;
-            // Caso 2: líder cai após receber a primeira proposta
             if (fail_case == 2 && node_id == leader_id && propostas_recebidas == 1) {
-                printf("[Node %d] Simulando falha do líder após 1a proposta\n", node_id);
+                printf("[Node %d] simulando falha do lider após 1a proposta\n", node_id);
                 exit(99);
+            }
+            if (fail_case == 4 && node_id == leader_id && propostas_recebidas == 2) {
+                printf("[Node %d] simulando falha do lider após 2a proposta\n", node_id);
+                exit(96);
             }
         }
         close(c);
@@ -201,14 +198,20 @@ void *listener(void *arg) {
     while (1) {
         int c = accept(server, NULL, NULL);
         msg m;
-        if (read(c, &m, sizeof(m)) == sizeof(m)) enqueue(&inbox, &m);
+        if (read(c, &m, sizeof(m)) == sizeof(m)) {
+            if (m.type == HEARTBEAT) {
+                last_heartbeat = time(NULL);
+            } else {
+                enqueue(&inbox, &m);
+            }
+        }
         close(c);
     }
     return NULL;
 }
 
 void *election(void *arg) {
-    int node_id = (int)(intptr_t)arg; // Corrija aqui
+    int node_id = (int)(intptr_t)arg; 
     srand(time(NULL) + node_id);
     int my_num = rand() % 10000;
     msg m = { ELECTION, node_id, 0, my_num };
@@ -234,19 +237,15 @@ void *election(void *arg) {
     snprintf(buf, sizeof(buf), "%s,%d,all,ELECT,%d,%d\n", ts, node_id, my_num, best_id);
     send_monitor(buf);
     election_done = 1;
-    printf("[Node %d] Leader elected: %d\n", node_id, leader_id);
+    printf("[Node %d] lider eleito: %d\n", node_id, leader_id);
     if (node_id == leader_id) {
-        // Caso 1: líder cai logo após eleição
-        if (fail_case == 1) {
-            printf("[Node %d] Simulando falha do líder após eleição\n", node_id);
-            exit(98);
-        }
-        // Aguarda o client estar ouvindo antes de informar
+       
+       
         sleep(1);
         inform_client(leader_id);
-        // Inicia thread para escutar propostas do client
+        
         pthread_t ct;
-        pthread_create(&ct, NULL, client_listener, (void*)(intptr_t)node_id); // Corrija aqui
+        pthread_create(&ct, NULL, client_listener, (void*)(intptr_t)node_id); 
         pthread_detach(ct);
     }
     return NULL;
@@ -257,7 +256,7 @@ void *paxos(void *arg) {
     while (!election_done) usleep(100000);
 
     if (fail_case == 3 && node_id != leader_id) {
-        printf("[Node %d] Simulando falha de nó não-líder\n", node_id);
+        printf("[Node %d] simulando falha de no\n", node_id);
         exit(97);
     }
 
@@ -269,13 +268,11 @@ void *paxos(void *arg) {
             new_proposal = 0;
             pthread_mutex_unlock(&proposal_mtx);
 
-            // Loga recebimento da proposta do client
             char ts2[32], buf2[128];
             timestamp(ts2, sizeof(ts2));
             snprintf(buf2, sizeof(buf2), "%s,%d,client,RECV_VALUE,%d,\n", ts2, node_id, val);
             send_monitor(buf2);
 
-            // Verifica se o valor é válido para o líder
             int valido = 0;
             for (int i = 0; i < KNOWN_STATES; i++) {
                 if (known_states[i] == val) {
@@ -284,7 +281,7 @@ void *paxos(void *arg) {
                 }
             }
             if (!valido) {
-                printf("[Node %d] Valor inválido recebido do client: %d\n", node_id, val);
+                printf("[Node %d] valor invalid recebido do client: %d\n", node_id, val);
                 continue;
             }
 
@@ -334,7 +331,6 @@ void *paxos(void *arg) {
                 msg prom = { PROMISE, node_id, r.proposal_num, accepted_value };
                 send_msg(r.from_id, &prom);
             } else if (r.type == ACCEPT) {
-                // Verifica se o valor proposto está nos estados conhecidos
                 int aceito = 0;
                 for (int i = 0; i < KNOWN_STATES; i++) {
                     if (known_states[i] == r.proposal_val) {
@@ -344,8 +340,7 @@ void *paxos(void *arg) {
                 }
                 if (aceito) {
                     accepted_value = r.proposal_val;
-                    // Print e log recebimento de proposta
-                    printf("[Node %d] Aceitou valor %d do líder %d (proposal_num=%d)\n", node_id, r.proposal_val, r.from_id, r.proposal_num);
+                    printf("[Node %d] Aceitou valor %d do lider %d (proposal_num=%d)\n", node_id, r.proposal_val, r.from_id, r.proposal_num);
                     char ts[32], buf[128];
                     timestamp(ts, sizeof(ts));
                     snprintf(buf, sizeof(buf), "%s,%d,%d,RECV_ACCEPT,%d,%d\n", ts, node_id, r.from_id, r.proposal_num, r.proposal_val);
@@ -354,14 +349,12 @@ void *paxos(void *arg) {
                     msg accd = { ACCEPTED, node_id, r.proposal_num, accepted_value };
                     send_msg(r.from_id, &accd);
 
-                    // Print e log resposta ACCEPTED
-                    printf("[Node %d] Enviou ACCEPTED para o líder %d (proposal_num=%d, valor=%d)\n", node_id, r.from_id, r.proposal_num, accepted_value);
+                    printf("[Node %d] Enviou ACCEPTED para o lider %d (proposal_num=%d, valor=%d)\n", node_id, r.from_id, r.proposal_num, accepted_value);
                     timestamp(ts, sizeof(ts));
                     snprintf(buf, sizeof(buf), "%s,%d,%d,SEND_ACCEPTED,%d,%d\n", ts, node_id, r.from_id, r.proposal_num, accepted_value);
                     send_monitor(buf);
                 } else {
-                    printf("[Node %d] Rejeitou valor %d do líder %d (proposal_num=%d)\n", node_id, r.proposal_val, r.from_id, r.proposal_num);
-                    // Não envia ACCEPTED
+                    printf("[Node %d] Rejeitou valor %d do lider %d (proposal_num=%d)\n", node_id, r.proposal_val, r.from_id, r.proposal_num);
                 }
             }
         }
@@ -370,18 +363,55 @@ void *paxos(void *arg) {
     return NULL;
 }
 
+
+void *heartbeat_sender(void *arg) {
+    int node_id = (int)(intptr_t)arg;
+    while (1) {
+        if (node_id == leader_id && election_done) {
+            msg hb = { HEARTBEAT, node_id, 0, 0 };
+            for (int i = 1; i <= NODES; i++) {
+                if (i != node_id) send_msg(i, &hb);
+            }
+        }
+        sleep(1);
+    }
+    return NULL;
+}
+
+
+void *leader_monitor(void *arg) {
+    int node_id = (int)(intptr_t)arg;
+    while (1) {
+        if (election_done && node_id != leader_id) {
+            time_t now = time(NULL);
+            if (last_heartbeat != 0 && now - last_heartbeat > 3) {
+                printf("[Node %d] detectado lider %d falhou! chamando reeleicao...\n", node_id, leader_id);
+                election_done = 0;
+                leader_id = -1;
+                last_heartbeat = 0;
+                pthread_t et;
+                pthread_create(&et, NULL, election, (void*)(intptr_t)node_id);
+                pthread_detach(et);
+            }
+        }
+        sleep(1);
+    }
+    return NULL;
+}
+
 int main(int argc, char **argv) {
-    int node_id = 4; // ID fixo para node1
-    // Permite ativar falha por argumento ou variável de ambiente
+    int node_id = 4; 
     if (argc >= 2) fail_case = atoi(argv[1]);
     char *env = getenv("PAXOS_FAIL_CASE");
     if (env) fail_case = atoi(env);
 
     queue_init(&inbox);
-    pthread_t lt, et, pt;
-    pthread_create(&lt, NULL, listener, (void*)(intptr_t)node_id); // Corrija aqui
-    pthread_create(&et, NULL, election, (void*)(intptr_t)node_id); // Corrija aqui
-    pthread_create(&pt, NULL, paxos, (void*)(intptr_t)node_id); // Corrija aqui
+    pthread_t lt, et, pt, hb, lm;
+    pthread_create(&lt, NULL, listener, (void*)(intptr_t)node_id);
+    pthread_create(&et, NULL, election, (void*)(intptr_t)node_id);
+    pthread_create(&pt, NULL, paxos, (void*)(intptr_t)node_id);
+    pthread_create(&hb, NULL, heartbeat_sender, (void*)(intptr_t)node_id);
+    pthread_create(&lm, NULL, leader_monitor, (void*)(intptr_t)node_id);
     pthread_join(lt, NULL);
     pthread_join(et, NULL);
     pthread_join(pt, NULL);

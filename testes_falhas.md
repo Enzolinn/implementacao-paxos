@@ -1,6 +1,6 @@
 # Casos de Teste de Falha - Paxos
 
-Este documento descreve cenários de falha para validar a robustez do sistema Paxos implementado.
+Este documento descreve cenários de falha para validar a robustez do sistema Paxos implementado. Os mecanismos para lidar com as falhas ainda precisam ser implementados
 
 ## 1. Client envia valor inválido
 
@@ -83,14 +83,6 @@ Este documento descreve cenários de falha para validar a robustez do sistema Pa
 
 ## 8. Falhas já implementadas via FAIL_CASE
 
-- **FAIL_CASE=1:** Líder cai logo após eleição.
 - **FAIL_CASE=2:** Líder cai após receber a primeira proposta.
 - **FAIL_CASE=3:** Nó não-líder cai durante execução.
 
-Execute com:
-```sh
-PAXOS_FAIL_CASE=<N> ./main
-```
----
-
-Esses testes ajudam a validar a tolerância a falhas, segurança e robustez do seu Paxos.

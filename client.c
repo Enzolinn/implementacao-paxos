@@ -16,7 +16,6 @@
 #define INTERVAL     15      // segundos entre envios
 #define MONITOR_PORT 6000
 
-// Mensagens cliente
 enum msg_type { CLIENT_PROPOSE = 1000, CLIENT_OK };
 
 typedef struct msg {
@@ -24,9 +23,10 @@ typedef struct msg {
     int value;
 } msg;
 
-// Função para receber líder
 int receive_leader() {
     int srv = socket(AF_INET, SOCK_STREAM, 0);
+    int opt = 1;
+    setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)); 
     struct sockaddr_in sin = { .sin_family = AF_INET,
         .sin_addr.s_addr = INADDR_ANY,
         .sin_port = htons(CLIENT_PORT) };
@@ -44,6 +44,30 @@ int receive_leader() {
     close(c);
     close(srv);
     printf("[Client] Líder eleito: %d\n", leader_id);
+    return leader_id;
+}
+
+int receive_new_leader() {
+    int srv = socket(AF_INET, SOCK_STREAM, 0);
+    int opt = 1;
+    setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)); //para evitar conflito com a porta
+    struct sockaddr_in sin = { .sin_family = AF_INET,
+        .sin_addr.s_addr = INADDR_ANY,
+        .sin_port = htons(CLIENT_PORT) };
+    if (bind(srv, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+        perror("bind"); exit(1);
+    }
+    listen(srv, 1);
+    printf("[Client] Aguardando novo líder na porta %d...\n", CLIENT_PORT);
+    int c = accept(srv, NULL, NULL);
+    if (c < 0) { perror("accept"); exit(1); }
+    int leader_id;
+    if (read(c, &leader_id, sizeof(leader_id)) != sizeof(leader_id)) {
+        fprintf(stderr, "[Client] Erro lendo novo líder\n"); exit(1);
+    }
+    close(c);
+    close(srv);
+    printf("[Client] Novo líder eleito: %d\n", leader_id);
     return leader_id;
 }
 
@@ -66,72 +90,83 @@ void timestamp(char *buf, size_t sz) {
 }
 
 int main() {
-    // 1) Recebe líder
+    
     int leader_id = receive_leader();
-    // Novo log no formato CSV:
+   
     char ts[32], buf[128];
     timestamp(ts, sizeof(ts));
     snprintf(buf, sizeof(buf), "%s,client,%d,RECV_LEADER,,\n", ts, leader_id);
     send_monitor(buf);
 
-   
 
-    // valores a propor (agora valores reais dos estados)
-    int valores[] = {42, 99, 7, 1234, 56}; // valores dos estados conhecidos
+    int valores[] = {42, 99, 7, 1234, 56};
     int n = sizeof(valores) / sizeof(valores[0]);
 
     for (int i = 0; i < n; i++) {
         int val = valores[i];
         int port = BASE_PORT + 100 + leader_id;
         sleep(2);
-        // 2) Envia valor ao líder
-        int sock = socket(AF_INET, SOCK_STREAM, 0);
-        struct sockaddr_in addr = { .sin_family = AF_INET,
-            .sin_port = htons(port),
-            .sin_addr.s_addr = inet_addr("127.0.0.1") };
-        if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
-            msg m = { CLIENT_PROPOSE, val }; // agora value é o valor do estado
-            write(sock, &m, sizeof(m));
-            printf("[Client] Sent value %d to leader %d\n", val, leader_id);
 
-            // Envia log ao monitor
-            char ts[32], buf[128];
-            timestamp(ts, sizeof(ts));
-            snprintf(buf, sizeof(buf), "%s,client,%d,SEND_VALUE,,%d\n", ts, leader_id, val);
-            send_monitor(buf);
-        } else {
-            perror("[Client] connect");
-        }
-        close(sock);
+        int enviado = 0;
+        while (!enviado) {
+            int sock = socket(AF_INET, SOCK_STREAM, 0);
+            struct sockaddr_in addr = { .sin_family = AF_INET,
+                .sin_port = htons(port),
+                .sin_addr.s_addr = inet_addr("127.0.0.1") };
+            if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+                msg m = { CLIENT_PROPOSE, val };
+                write(sock, &m, sizeof(m));
+                printf("[Client] valor enviado %d ao lider %d\n", val, leader_id);
 
-        // 3) Aguarda OK do líder
-        int ack_srv = socket(AF_INET, SOCK_STREAM, 0);
-        struct sockaddr_in csin = { .sin_family = AF_INET,
-            .sin_addr.s_addr = INADDR_ANY,
-            .sin_port = htons(CLIENT_PORT+1) };  // porta de ack
-        if (bind(ack_srv, (struct sockaddr *)&csin, sizeof(csin)) < 0) {
-            perror("bind ack"); exit(1);
-        }
-        listen(ack_srv, 1);
-        int c2 = accept(ack_srv, NULL, NULL);
-        if (c2 >= 0) {
-            msg r;
-            if (read(c2, &r, sizeof(r)) == sizeof(r) && r.type == CLIENT_OK) {
-                printf("[Client] Received OK for %d\n", r.value);
-
-                // Envia log ao monitor
                 char ts[32], buf[128];
                 timestamp(ts, sizeof(ts));
-                snprintf(buf, sizeof(buf), "%s,client,%d,RECV_OK,,%d\n", ts, leader_id, r.value);
+                snprintf(buf, sizeof(buf), "%s,client,%d,SEND_VALUE,,%d\n", ts, leader_id, val);
                 send_monitor(buf);
             } else {
-                fprintf(stderr, "[Client] Invalid ACK\n");
+                perror("[Client] connect");
             }
-            close(c2);
-        }
-        close(ack_srv);
+            close(sock);
 
-        // Espera próximo valor
+            int ack_srv = socket(AF_INET, SOCK_STREAM, 0);
+            int opt = 1;
+            setsockopt(ack_srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)); 
+            struct sockaddr_in csin = { .sin_family = AF_INET,
+                .sin_addr.s_addr = INADDR_ANY,
+                .sin_port = htons(CLIENT_PORT+1) };
+            if (bind(ack_srv, (struct sockaddr *)&csin, sizeof(csin)) < 0) {
+                perror("bind ack"); exit(1);
+            }
+            listen(ack_srv, 1);
+
+            fd_set fds;
+            FD_ZERO(&fds);
+            FD_SET(ack_srv, &fds);
+            struct timeval tv = {8, 0};
+            int sel = select(ack_srv+1, &fds, NULL, NULL, &tv);
+            if (sel > 0) {
+                int c2 = accept(ack_srv, NULL, NULL);
+                if (c2 >= 0) {
+                    msg r;
+                    if (read(c2, &r, sizeof(r)) == sizeof(r) && r.type == CLIENT_OK) {
+                        printf("[Client] Recebido OK para %d\n", r.value);
+                        char ts[32], buf[128];
+                        timestamp(ts, sizeof(ts));
+                        snprintf(buf, sizeof(buf), "%s,client,%d,RECV_OK,,%d\n", ts, leader_id, r.value);
+                        send_monitor(buf);
+                        enviado = 1;
+                    } else {
+                        fprintf(stderr, "[Client] ACK invalido\n");
+                    }
+                    close(c2);
+                }
+            } else {
+                sleep(10);
+                printf("[Client] Timeout esperando ACK do lider %d para valor %d. Aguardando novo lider...\n", leader_id, val);
+                leader_id = receive_new_leader();
+                port = BASE_PORT + 100 + leader_id;
+            }
+            close(ack_srv);
+        }
         if (i < n-1) sleep(INTERVAL);
     }
     printf("[Client] Todas propostas enviadas. Saindo...\n");
