@@ -1,6 +1,3 @@
-// client.c
-// Simula um cliente que recebe o líder eleito e envia propostas a cada INTERVAL segundos
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +10,7 @@
 
 #define BASE_PORT    5000    // base para nodos
 #define CLIENT_PORT  7000    // porta para receber ID do líder
-#define INTERVAL     15      // segundos entre envios
+#define INTERVAL     6      // segundos entre envios
 #define MONITOR_PORT 6000
 
 enum msg_type { CLIENT_PROPOSE = 1000, CLIENT_OK };
